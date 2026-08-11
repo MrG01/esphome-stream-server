@@ -19,11 +19,14 @@ void StreamServerComponent::setup() {
     this->buf_ = std::unique_ptr<uint8_t[]>{new uint8_t[this->buf_size_]};
 
     struct sockaddr_storage bind_addr;
-#if ESPHOME_VERSION_CODE >= VERSION_CODE(2023, 4, 0)
-    socklen_t bind_addrlen = socket::set_sockaddr_any(reinterpret_cast<struct sockaddr *>(&bind_addr), sizeof(bind_addr), this->port_);
-#else
-    socklen_t bind_addrlen = socket::set_sockaddr_any(reinterpret_cast<struct sockaddr *>(&bind_addr), sizeof(bind_addr), htons(this->port_));
-#endif
+    #if ESPHOME_VERSION_CODE >= VERSION_CODE(2026, 7, 0)
+        char buf[network::USE_ADDRESS_BUFFER_SIZE];
+        ESP_LOGCONFIG(TAG, "  Address: %s:%u", esphome::network::get_use_address_to(buf), this->port_);
+    #elif ESPHOME_VERSION_CODE >= VERSION_CODE(2025, 11, 0)
+        ESP_LOGCONFIG(TAG, "  Address: %s:%u", esphome::network::get_use_address(), this->port_);
+    #else
+        socklen_t bind_addrlen = socket::set_sockaddr_any(reinterpret_cast<struct sockaddr *>(&bind_addr), sizeof(bind_addr), htons(this->port_));
+    #endif
 
     this->socket_ = socket::socket_ip(SOCK_STREAM, PF_INET);
     this->socket_->setblocking(false);
