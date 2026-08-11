@@ -28,7 +28,12 @@ void StreamServerComponent::setup() {
         socklen_t bind_addrlen = socket::set_sockaddr_any(reinterpret_cast<struct sockaddr *>(&bind_addr), sizeof(bind_addr), htons(this->port_));
     #endif
 
+#if ESPHOME_VERSION_CODE >= VERSION_CODE(2026, 3, 0)    
+    this->socket_ = socket::socket_ip_loop_monitored(SOCK_STREAM, PF_INET).release();    
+#else
     this->socket_ = socket::socket_ip(SOCK_STREAM, PF_INET);
+#endif 
+      
     this->socket_->setblocking(false);
     this->socket_->bind(reinterpret_cast<struct sockaddr *>(&bind_addr), bind_addrlen);
     this->socket_->listen(8);
@@ -46,7 +51,11 @@ void StreamServerComponent::loop() {
 
 void StreamServerComponent::dump_config() {
     ESP_LOGCONFIG(TAG, "Stream Server:");
+#if ESPHOME_VERSION_CODE >= VERSION_CODE(2025, 11, 0)
+    ESP_LOGCONFIG(TAG, "  Address: %s:%u", esphome::network::get_use_address(), this->port_);
+#else
     ESP_LOGCONFIG(TAG, "  Address: %s:%u", esphome::network::get_use_address().c_str(), this->port_);
+#endif
 #ifdef USE_BINARY_SENSOR
     LOG_BINARY_SENSOR("  ", "Connected:", this->connected_sensor_);
 #endif
@@ -56,6 +65,11 @@ void StreamServerComponent::dump_config() {
 }
 
 void StreamServerComponent::on_shutdown() {
+#if ESPHOME_VERSION_CODE >= VERSION_CODE(2026, 3, 0)
+    delete this->socket_;
+    this->socket_ = nullptr;    
+#endif 
+
     for (const Client &client : this->clients_)
         client.socket->shutdown(SHUT_RDWR);
 }
@@ -79,7 +93,15 @@ void StreamServerComponent::accept() {
         return;
 
     socket->setblocking(false);
+
+#if ESPHOME_VERSION_CODE >= VERSION_CODE(2026, 1, 0)
+    std::string identifier = std::string{esphome::socket::SOCKADDR_STR_LEN, 0};
+    auto identifier_span = std::span<char, esphome::socket::SOCKADDR_STR_LEN>(identifier.data(), identifier.size());
+    identifier.resize(socket->getpeername_to(identifier_span));
+#else
     std::string identifier = socket->getpeername();
+#endif
+
     this->clients_.emplace_back(std::move(socket), identifier, this->buf_head_);
     ESP_LOGD(TAG, "New client connected from %s", identifier.c_str());
     this->publish_sensor();
